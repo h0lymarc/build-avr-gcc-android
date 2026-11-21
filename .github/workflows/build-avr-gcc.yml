@@ -199,7 +199,7 @@ jobs:
           export RANLIB="$NDK_BIN/llvm-ranlib"
           export NM="$NDK_BIN/llvm-nm"
           export STRIP="$NDK_BIN/llvm-strip"
-          export CFLAGS="-O2"
+          export CFLAGS="-O2 -std=gnu17"
 
           mkdir -p "$WORK/build/gmp" && cd "$WORK/build/gmp"
           "$WORK/src/gmp-${GMP_VERSION}/configure" \
@@ -236,13 +236,16 @@ jobs:
             --disable-shared --enable-static \
             --disable-nls --disable-werror --disable-gdb --disable-sim \
             --disable-gold --disable-gprofng --disable-plugins --without-zstd \
+            CC_FOR_BUILD=gcc CXX_FOR_BUILD=g++ \
+            CFLAGS_FOR_BUILD="-O2" CXXFLAGS_FOR_BUILD="-O2" LDFLAGS_FOR_BUILD="" \
             CC="$NDK_BIN/${HOST}${API}-clang" \
             CXX="$NDK_BIN/${HOST}${API}-clang++" \
             AR="$NDK_BIN/llvm-ar" RANLIB="$NDK_BIN/llvm-ranlib" \
             NM="$NDK_BIN/llvm-nm" STRIP="$NDK_BIN/llvm-strip" \
             CFLAGS="-O2" CXXFLAGS="-O2" LDFLAGS="-static"
-          make -j"$(nproc)" LDFLAGS="-all-static"
-          make install
+          make -j"$(nproc)" configure-host
+          make -j"$(nproc)" LDFLAGS="-all-static" LDFLAGS_FOR_BUILD=""
+          make install LDFLAGS="-all-static" LDFLAGS_FOR_BUILD=""
           rm -rf "$WORK/build/binutils"
 
       - name: Cross-compile static avr-gcc
@@ -298,7 +301,7 @@ jobs:
           file "$WORK/out/avr-gcc/bin/avr-gcc" \
                "$WORK/out/avr-gcc/bin/avr-ld" \
                "$WORK/out/avr-gcc/libexec/gcc/avr/"*/cc1plus
-          "$NDK_BIN/llvm-readelf" -d "$WORK/out/avr-gcc/bin/avr-gcc" || true
+          "$NDK_BIN/llvm-readelf" -d "$WORK/out/avr-gcc/bin/avr-gcc" "$WORK/out/avr-gcc/bin/avr-ld" || true
 
           tar -cJf "$WORK/avr-gcc-${{ inputs.gcc_version || '15.2.0' }}-android-${{ matrix.abi }}.tar.xz" \
             -C "$WORK/out" avr-gcc
