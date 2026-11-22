@@ -5,7 +5,7 @@ on:
     inputs:
       api_level:
         description: "Android API level"
-        default: "24"
+        default: "28"
         required: true
       binutils_version:
         default: "2.47"
@@ -215,7 +215,7 @@ jobs:
       - name: Prepare linker shim (64-byte TLS alignment + 16 KB pages)
         run: |
           NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          API="${{ inputs.api_level || '24' }}"
+          API="${{ inputs.api_level || '28' }}"
           echo '__thread char avr_tls_pad[1] __attribute__((used, aligned(64)));' > "$WORK/tls64.c"
           "$NDK_BIN/${{ matrix.host }}${API}-clang" -c -O2 "$WORK/tls64.c" -o "$WORK/tls64.o"
           echo "EXTRA_LD=$WORK/tls64.o -Wl,-z,max-page-size=16384" >> "$GITHUB_ENV"
@@ -250,7 +250,7 @@ jobs:
         run: |
           exec > >(tee -a "$LOGS/gmp-mpfr-mpc-${{ matrix.abi }}.log") 2>&1
           NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          API="${{ inputs.api_level || '24' }}"
+          API="${{ inputs.api_level || '28' }}"
           HOST="${{ matrix.host }}"
           BUILD="$(gcc -dumpmachine)"
 
@@ -286,14 +286,14 @@ jobs:
         run: |
           exec > >(tee -a "$LOGS/binutils-${{ matrix.abi }}.log") 2>&1
           NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          API="${{ inputs.api_level || '24' }}"
+          API="${{ inputs.api_level || '28' }}"
           HOST="${{ matrix.host }}"
           BUILD="$(gcc -dumpmachine)"
 
           # posix_spawn is hidden in NDK headers below API 28 but exists in the
           # static libc.a, so configure's probe wrongly succeeds. Force the
           # fork/vfork fallback in libiberty.
-          export ac_cv_func_posix_spawn=no ac_cv_func_posix_spawnp=no
+          export ac_cv_func_posix_spawn=no ac_cv_func_posix_spawnp=no ac_cv_func_qsort_r=no
 
           mkdir -p "$WORK/build/binutils" && cd "$WORK/build/binutils"
           "$WORK/src/binutils-${{ inputs.binutils_version || '2.47' }}/configure" \
@@ -310,6 +310,13 @@ jobs:
             NM="$NDK_BIN/llvm-nm" STRIP="$NDK_BIN/llvm-strip" \
             CFLAGS="-O2" CXXFLAGS="-O2" LDFLAGS="-static $EXTRA_LD"
           make -j"$(nproc)" configure-host
+
+          # qsort_r is only declared in new NDK API levels but exists in libc.a:
+          # make libctf use its own fallback
+          if [ -f libctf/config.h ]; then
+            sed -i -E 's|^#define HAVE_QSORT_R 1|/* & disabled */|' libctf/config.h
+            grep -n "QSORT_R" libctf/config.h || true
+          fi
 
           # belt and braces: disable posix_spawn in the generated config.h too
           if [ -f libiberty/config.h ]; then
@@ -328,11 +335,11 @@ jobs:
           exec > >(tee -a "$LOGS/gcc-${{ matrix.abi }}.log") 2>&1
           export PATH="$NATIVE_PREFIX/bin:$PATH"
           NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          API="${{ inputs.api_level || '24' }}"
+          API="${{ inputs.api_level || '28' }}"
           HOST="${{ matrix.host }}"
           BUILD="$(gcc -dumpmachine)"
 
-          export ac_cv_func_posix_spawn=no ac_cv_func_posix_spawnp=no
+          export ac_cv_func_posix_spawn=no ac_cv_func_posix_spawnp=no ac_cv_func_qsort_r=no
 
           mkdir -p "$WORK/build/gcc" && cd "$WORK/build/gcc"
           "$WORK/src/gcc-${{ inputs.gcc_version || '15.2.0' }}/configure" \
